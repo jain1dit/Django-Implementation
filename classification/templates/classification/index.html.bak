@@ -1,0 +1,15 @@
+
+{% load static %}
+{#<img src="{% static "classification/honeycomb_3.jpg" %}" alt="hi"/>#}
+
+<body background="{% static "classification/honeycomb_3.jpg" %}">
+	<h1 align=center style="color:blue;font-family:courier;font-size:300%">Welcome to Supervised Machine Learning !!</h1>
+	<h3>description </h3>
+
+	<form action="" method="post" enctype="multipart/form-data">
+		{% csrf_token %}
+		{{form}}
+		<br><br><br>
+		<input type="submit" value="Submit"/>
+	</form>
+</body>

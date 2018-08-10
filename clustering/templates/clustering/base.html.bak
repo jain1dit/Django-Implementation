@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {#<#link rel="stylesheet" href="style.css" /#> commented for now#}
+    <title>{% block title %}HoneyComb{% endblock %}</title>
+</head>
+{% load static %}
+<body background="{% static "clustering/honeycomb_3.jpg" %}">
+	<h1 align=center style="color:blue;font-family:courier;font-size:300%">{% block heading %}{% endblock %}</h1>
+	<form action="" method="post" enctype="multipart/form-data">
+		{% block frm %}
+		
+		{% endblock %}
+	</form>
+  <div id="content">
+  	{% block content %}{% endblock %}
+	</div>
+</body>
+</html>

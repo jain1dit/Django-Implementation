@@ -1,0 +1,11 @@
+{% extends "clustering/base.html" %}
+
+{% block heading %} Categorization results {% endblock %}
+
+{% block content %}
+	<ul>
+		{% for cls in clusters.results %}
+			<li style="font-weight:bold;color:black;font-family:courier;font-size:200%">Cluster <a href="results/cluster_data/{{ clusters.fileName }}/{{ cls.indxOfCluster }}">{{ cls.indxOfCluster }}</a> has {{cls.itemCount}} items. Common patterns are {{cls.wordList}}</li> 
+		{% endfor%}
+	</ul>
+{% endblock %}

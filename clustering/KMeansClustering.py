@@ -1,0 +1,210 @@
+from __future__ import print_function
+import pandas as pd
+import nltk
+import re
+import shutil
+import os
+from sklearn import feature_extraction
+from nltk.stem.snowball import SnowballStemmer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import cosine_similarity
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from sklearn.manifold import MDS
+from scipy.cluster.hierarchy import ward, dendrogram
+from sklearn import metrics
+from sklearn.externals import joblib
+from django.conf import settings
+from .KMeansClusteringResult import KMeansResults
+
+
+MDS()
+
+class KMeansClustering:
+	def __init__ (self,
+								exlDoc,
+								noOfClusters = 4,
+								sheetName = 'Test_data',
+								textColName = 'Inc Summary',
+								labelColName = 'Inc ID',
+								linkColName = 'Inc Uts Link'):
+		self.exlDoc = exlDoc
+		self.noOfClusters = noOfClusters
+		self.sheetName = sheetName
+		self.textColName = textColName
+		self.labelColName = labelColName
+		self.linkColName = linkColName
+		self.stopwords = set()
+
+	## here I define a tokenizer and stemmer which returns the set of stems in the text that it is passed
+	def tokenize_and_stem(self, text):
+		self.stopwords = set(nltk.corpus.stopwords.words('english'))
+		self.stopwords.add("please")
+		self.stopwords.add("Please")
+		self.stopwords.add("kindly")
+		self.stopwords.add("Kindly")
+		self.stopwords.add("PLEASE")
+		self.stopwords.add("KINDLY")
+		self.stopwords.add("Airtel")
+		self.stopwords.add("AIRTEL")
+		self.stopwords.add("team")
+		self.stopwords.add("Team")
+		self.stopwords.add("TEAM")
+		self.stopwords.add("dear")
+		self.stopwords.add("Dear")
+		self.stopwords.add("DEAR")
+		self.stopwords.add("order")
+		self.stopwords.add("Order")
+		self.stopwords.add("ID")
+		self.stopwords.add("Id")
+		self.stopwords.add("id")
+		stemmer = SnowballStemmer("english")
+		
+		# first tokenize by sentence, then by word to ensure that punctuation is caught as it's own token
+		tokens = [word for sent in nltk.sent_tokenize(text) for word in nltk.word_tokenize(sent)]
+		filtered_tokens = []
+		# filter out any tokens not containing letters (e.g., numeric tokens, raw punctuation)
+		for token in tokens:
+			#token = re.sub('[!@#$-_]', ' ', token)
+			token = token.translate({ord(c): None for c in '!@#$-_'})
+			if re.search('[a-zA-Z]', token):
+				if re.search('[0-9]', token):
+					token = ''.join([i for i in token if not i.isdigit()])
+					filtered_tokens.append(token)
+				else:
+					filtered_tokens.append(token)
+		stems = [stemmer.stem(t) for t in filtered_tokens]
+		return stems
+	
+	def tokenize_only(self, text):
+		# first tokenize by sentence, then by word to ensure that punctuation is caught as it's own token
+		tokens = [word.lower() for sent in nltk.sent_tokenize(text) for word in nltk.word_tokenize(sent)]
+		filtered_tokens = []
+		# filter out any tokens not containing letters (e.g., numeric tokens, raw punctuation)
+		for token in tokens:
+			token = token.translate({ord(c): None for c in '!@#$-_'})
+			#token = re.sub('[!@#$-_]', ' ', token)
+			if re.search('[a-zA-Z]', token):
+				if re.search('[0-9]', token):
+					token = ''.join([i for i in token if not i.isdigit()])
+					filtered_tokens.append(token)
+				else:
+					filtered_tokens.append(token)
+		return filtered_tokens
+	
+	def remove_stopwords(self, text):
+		tokens = nltk.word_tokenize(text)
+		temp = [w for w in tokens if w.lower() not in self.stopwords]
+		temp_1 = ' '.join(temp)
+		return temp_1
+	
+	def create_model(self):
+		#Go to temp directory so that data is save in that dir only
+		os.chdir(settings.SITE_ROOT)
+		print(settings.SITE_ROOT)
+		path = '../clustering/KM_temp'
+		os.chdir(path)
+
+		print("reading data ")
+		df = pd.read_excel(self.exlDoc, sheetname=self.sheetName)
+		data=[]
+		inc_list=[]
+		inc_links=[]
+		for i in df.index:
+			data.append(df[self.textColName][i])
+			inc_list.append(df[self.labelColName][i])
+			inc_links.append(df[self.linkColName][i])
+	
+		print("reading finished for ")
+		print(df.index)
+	
+		# not super pythonic, no, not at all.
+		# use extend so it's a big flat list of vocab
+		totalvocab_stemmed = []
+		totalvocab_tokenized = []
+		print("creating vocab")
+		clean_data = []
+		for i in data:
+			i = self.remove_stopwords(i)
+			clean_data.append(i)
+			allwords_stemmed = self.tokenize_and_stem(i)  # for each item in data, tokenize/stem
+			allwords_tokenized = self.tokenize_only(i)
+			totalvocab_tokenized.extend(allwords_tokenized)
+			totalvocab_stemmed.extend(allwords_stemmed)  # extend the 'totalvocab_stemmed' list
+	
+		#print(totalvocab_stemmed)
+		#print(totalvocab_tokenized)
+		vocab_frame = pd.DataFrame({'words': totalvocab_tokenized}, index = totalvocab_stemmed)
+		#vocab_frame.to_excel(writer, 'Sheet1')
+	
+		#define vectorizer parameters
+		print("creating vectorizor")
+		tfidf_vectorizer = TfidfVectorizer(max_df=0.9, max_features=200000,
+																			min_df=0.1, stop_words=self.stopwords,
+																			use_idf=True, tokenizer=self.tokenize_and_stem, ngram_range=(1,3))
+		tfidf_matrix = tfidf_vectorizer.fit_transform(clean_data)
+		#tfidf_matrix = tfidf_vectorizer.fit_transform(data)
+		print(tfidf_matrix.shape)
+		print("vectorizor created")
+	
+		terms = tfidf_vectorizer.get_feature_names()
+		dist = 1 - cosine_similarity(tfidf_matrix)
+	
+		km = KMeans(n_clusters=self.noOfClusters, n_init=20)
+		km.fit(tfidf_matrix)
+		#joblib.dump(km,  'KMCluserting.pkl')
+		clusters = km.labels_.tolist()
+		#print("clusters are: ")
+		#print(clusters)
+	
+		###Following scores can be calculated when labels of the data are known.
+		###print("Homogeneity: %0.3f" % metrics.homogeneity_score(totalvocab_stemmed, km.labels_))
+		###print("Completeness: %0.3f" % metrics.completeness_score(totalvocab_stemmed, km.labels_))
+		###print("V-measure: %0.3f" % metrics.v_measure_score(totalvocab_stemmed, km.labels_))
+	
+		inc_data = {'incident': inc_list, 'data': clean_data, 'cluster': clusters, 'uts link': inc_links}
+		frame = pd.DataFrame(inc_data, index = [clusters] , columns = ['incident','data','cluster', 'uts link'])
+		print(frame['cluster'].value_counts()) #number of INCs per cluster (clusters from 0 to 4)
+		print(path + '/' + self.exlDoc.name)
+		print(os.path.exists(self.exlDoc.name))
+		if not os.path.exists(self.exlDoc.name):
+			os.mkdir(self.exlDoc.name)
+		else:
+			shutil.rmtree(self.exlDoc.name)           #removes all the subdirectories!
+			os.mkdir(self.exlDoc.name)
+
+		path = './' + self.exlDoc.name
+		os.chdir(path)
+			
+		#grouped = frame['data'].groupby(frame['cluster']) #groupby cluster for aggregation purposes
+		#average rank (1 to 100) per cluster
+		#grouped.mean()
+		#print("\n\n")
+		#print("*********   Top terms per cluster:")
+		#print()
+		#print(km.cluster_centers_)
+		# sort cluster centers by proximity to centroid
+		order_centroids = km.cluster_centers_.argsort()[:, ::-1]
+		temp = ""
+		res = KMeansResults(self.exlDoc.name)
+		for i in range(self.noOfClusters):
+			#print("Cluster %d words:" % i, end='')
+			for ind in order_centroids[i, :3]:  # replace 6 with n words per cluster
+				#print(' %s' % vocab_frame.ix[terms[ind].split(' ')].values.tolist()[0][0].encode('utf-8', 'ignore'), end=',')
+				print(' %s' % vocab_frame.ix[terms[ind].split(' ')].values.tolist()[0][0], end=',')
+				temp = " " + temp + vocab_frame.ix[terms[ind].split(' ')].values.tolist()[0][0] + " , "
+			print()
+			#print("Cluster %d INC:" % i, end='')
+						
+			count=0
+			for incident in frame.ix[i]['incident']:
+				print('%s,' % incident, end='')
+				count = count + 1
+			print()  # add whitespace
+			res.add_cluster(i+1, temp, count)
+			print()
+			frame.loc[frame.cluster==i, ['incident','uts link']].to_excel('cluster_' + str(i+1) + '_' + self.exlDoc.name)
+		os.chdir(settings.SITE_ROOT)
+		return res
+

@@ -1,0 +1,13 @@
+
+{% extends "clustering/base.html" %}
+{% block heading %} Welcome to Un-Supervised learning {% endblock %}
+{% block frm %}
+	{% csrf_token %}
+	<br>
+	<h3>Select only xls or xlsx file </h3>
+	<br>
+	{{form}}
+	<br><br><br>
+	<input type="submit" value="Submit"/>
+{% endblock frm %}
+
